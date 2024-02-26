@@ -1,13 +1,14 @@
-import * as fs from 'fs'
+import { createReadStream, createWriteStream } from 'fs'
 import * as readline from 'readline'
 import { PassThrough } from 'stream'
+import { unlinkAsync, writeFileAsync } from './promises/fsPromise.js';
 
 async function sortLargeFile(filePath: string, chunkSize: number) {
     let chunkCount = 0;
-    let chunks = [];
-    let currentChunk = [];
+    let chunks: string[] = [];
+    let currentChunk: string[] = [];
     const rl = readline.createInterface({
-        input: fs.createReadStream(filePath),
+        input: createReadStream(filePath),
         crlfDelay: Infinity
     });
     for await (const line of rl) {
@@ -15,7 +16,7 @@ async function sortLargeFile(filePath: string, chunkSize: number) {
         if (currentChunk.length >= chunkSize) {
             currentChunk.sort();
             const chunkFilePath = `chunk_${chunkCount}.txt`;
-            fs.writeFileSync(chunkFilePath, currentChunk.join('\n'));
+            await writeFileAsync(chunkFilePath, currentChunk.join('\n'));
             chunks.push(chunkFilePath);
             chunkCount++;
             currentChunk = [];
@@ -24,17 +25,17 @@ async function sortLargeFile(filePath: string, chunkSize: number) {
     if (currentChunk.length > 0) {
         currentChunk.sort();
         const chunkFilePath = `chunk_${chunkCount}.txt`;
-        fs.writeFileSync(chunkFilePath, currentChunk.join('\n'));
+        await writeFileAsync(chunkFilePath, currentChunk.join('\n'));
         chunks.push(chunkFilePath);
     }
 
-    const outputStream = fs.createWriteStream('sorted_file.txt');
-    const streams = chunks.map(chunkFile => fs.createReadStream(chunkFile));
+    const outputStream = createWriteStream('sorted_file.txt');
+    const streams = chunks.map(chunkFile => createReadStream(chunkFile));
     let mergedStream = new PassThrough();
     streams.forEach(stream => {
         stream.pipe(mergedStream, { end: false });
-        stream.on('end', () => {
-            fs.unlinkSync(stream.path);
+        stream.on('end', async () => {
+            await unlinkAsync(stream.path);
         });
     });
     mergedStream.pipe(outputStream);
@@ -43,6 +44,6 @@ async function sortLargeFile(filePath: string, chunkSize: number) {
 const filePath = '160-KB.txt';
 const chunkSize = 500000;
 
-// sortLargeFile(filePath, chunkSize)
-//     .then(() => console.log('Файл отсортирован'))
-//     .catch(error => console.error('Ошибка сортировки:', error));
+sortLargeFile(filePath, chunkSize)
+    .then(() => console.log('Файл отсортирован'))
+    .catch(error => console.error('Ошибка сортировки:', error));
